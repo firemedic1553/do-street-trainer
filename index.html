@@ -114,8 +114,9 @@
     <div id="zoomctl"><button id="zin" aria-label="Zoom in">+</button><button id="zout" aria-label="Zoom out">−</button><button id="zfit" aria-label="Fit" style="font-size:13px">Fit</button></div>
     <div id="loading">Loading map…</div>
     <div id="boxPanel" class="hidden"><div class="card">
-      <h2>Choose boxes to drill</h2>
-      <p style="margin:0 0 8px;color:var(--mute);font-size:13px">Check the boxes you've learned plus the new one you're adding. Questions mix all checked boxes. Missed streets still come up more often.</p>
+      <h2 id="bxTitle">Choose boxes to drill</h2>
+      <div class="seg" id="grpSeg" style="margin-bottom:8px"><button data-g="box" class="on">By box</button><button data-g="hood">By neighborhood</button></div>
+      <p id="bxHelp" style="margin:0 0 8px;color:var(--mute);font-size:13px">Check the boxes you've learned plus the new one you're adding. Questions mix all checked boxes. Missed streets still come up more often.</p>
       <div id="boxQuick" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px"><button class="btn" id="bxAll">Select all</button><button class="btn" id="bxNone">Clear</button><label style="display:flex;gap:6px;align-items:center;font-size:14px"><input type="checkbox" id="bxNew" style="width:20px;height:20px"> New streets only</label></div>
       <div id="boxList"></div>
       <div style="display:flex;gap:8px;margin-top:12px"><button class="btn primary" id="bxDone">Done</button></div>
@@ -150,7 +151,7 @@ const $ = s => document.querySelector(s);
 const wrap = $('#mapwrap'), stage = $('#stage'), img = $('#mapimg'), ov = $('#ov');
 const NS = 'http://www.w3.org/2000/svg';
 let DATA, ST, stKey, view = {s:1, tx:0, ty:0};
-let mode = 'name', ans = 'choice', sel = new Set(), newOnly = false, cur = null, answered = false, lastName = null;
+let mode = 'name', ans = 'choice', sel = new Set(), selH = new Set(), grp = 'box', newOnly = false, cur = null, answered = false, lastName = null;
 let stats = {};
 
 // ---------- storage ----------
@@ -158,7 +159,7 @@ function load(){ try { stats = JSON.parse(localStorage.getItem('do-stats-'+stKey
 function save(){ try { localStorage.setItem('do-stats-'+stKey, JSON.stringify(stats)); } catch(e){} }
 function rec(name, ok){ const r = stats[name] || (stats[name] = {r:0,w:0,k:0}); if(ok){ r.r++; r.k++; } else { r.w++; r.k = 0; } save(); }
 function prefs(){ try { return JSON.parse(localStorage.getItem('do-prefs')||'{}'); } catch(e){ return {}; } }
-function savePrefs(){ try { const p = prefs(); p.stKey = stKey; p.mode = mode; p.ans = ans; p.sel = p.sel || {}; p.sel[stKey] = {b:[...sel], n:newOnly}; localStorage.setItem('do-prefs', JSON.stringify(p)); } catch(e){} }
+function savePrefs(){ try { const p = prefs(); p.stKey = stKey; p.mode = mode; p.ans = ans; p.sel = p.sel || {}; p.sel[stKey] = {b:[...sel], n:newOnly, g:grp, h:[...selH]}; localStorage.setItem('do-prefs', JSON.stringify(p)); } catch(e){} }
 
 // ---------- data ----------
 try { DATA = await (await fetch('data.json')).json(); }
@@ -172,6 +173,8 @@ function setStation(k, keepBox){
   stKey = k; ST = DATA.stations[k]; stSel.value = k; load();
   const saved = (prefs().sel || {})[k];
   sel = new Set(saved ? saved.b.filter(b => ST.boxes[b]) : []); newOnly = !!(saved && saved.n);
+  grp = (saved && saved.g === 'hood') ? 'hood' : 'box';
+  selH = new Set(saved && saved.h ? saved.h.filter(h => h === OTHER || (ST.hoods && ST.hoods[h])) : []);
   boxLabelUpd();
   ST.streets.forEach(s => { if(!s._len){ let L=0; s.lines.forEach(l=>{ for(let i=1;i<l.length;i++) L+=Math.hypot(l[i][0]-l[i-1][0], l[i][1]-l[i-1][1]); }); s._len=L; } });
   $('#loading').classList.remove('hidden');
@@ -181,16 +184,40 @@ function setStation(k, keepBox){
   ov.setAttribute('viewBox', `${x0} ${y0} ${x1-x0} ${y1-y0}`); ov.setAttribute('width', ST.imgW); ov.setAttribute('height', ST.imgH); initOv();
   updScore(); savePrefs();
 }
-function pool(){ return ST.streets.filter(s => (sel.size===0 || s.boxes.some(b=>sel.has(b))) && (!newOnly || s.isNew)); }
-function boxLabelUpd(){ const b = [...sel].sort(); let t = b.length===0 ? 'All boxes' : b.length<=3 ? 'Box ' + b.join(', ') : b.length + ' boxes'; if (newOnly) t += ' · new only'; $('#boxBtn').textContent = t + ' ▾'; }
-function solidIn(b){ const P = ST.streets.filter(s=>s.boxes.includes(b)); let n=0; P.forEach(s=>{ const r=stats[s.name]; if(r && r.k>=2) n++; }); return [n, P.length]; }
+// ---------- groups: boxes or neighborhoods ----------
+const OTHER = 'No subdivision';
+function sHoods(s){ return (s.hoods && s.hoods.length) ? s.hoods : [OTHER]; }
+function curSel(){ return grp === 'hood' ? selH : sel; }
+function gKeys(){ if (grp === 'box') return Object.keys(ST.boxes).sort();
+  const k = Object.keys(ST.hoods || {}).sort((a,b)=>a.localeCompare(b)); if (ST.streets.some(s=>!(s.hoods && s.hoods.length))) k.push(OTHER); return k; }
+function gStreets(k){ return ST.streets.filter(s => grp === 'box' ? s.boxes.includes(k) : sHoods(s).includes(k)); }
+function gName(k){ return grp === 'box' ? 'Box ' + k : k; }
+function gBBox(k){
+  if (grp === 'box') return boxBBox(k);
+  const S = gStreets(k); if (!S.length) return null;
+  const b = [Math.min(...S.map(s=>s.bbox[0])), Math.min(...S.map(s=>s.bbox[1])), Math.max(...S.map(s=>s.bbox[2])), Math.max(...S.map(s=>s.bbox[3]))];
+  const pad = Math.max(25, 0.08*Math.max(b[2]-b[0], b[3]-b[1]));
+  return [b[0]-pad, b[1]-pad, b[2]+pad, b[3]+pad];
+}
+function inSel(s){ const c = curSel(); if (c.size === 0) return true; return grp === 'box' ? s.boxes.some(b=>c.has(b)) : sHoods(s).some(h=>c.has(h)); }
+function pool(){ return ST.streets.filter(s => inSel(s) && (!newOnly || s.isNew)); }
+function boxLabelUpd(){ const b = [...curSel()].sort(); let t;
+  if (grp === 'box') t = b.length===0 ? 'All boxes' : b.length<=3 ? 'Box ' + b.join(', ') : b.length + ' boxes';
+  else t = b.length===0 ? 'All neighborhoods' : b.length<=2 ? b.join(', ') : b.length + ' neighborhoods';
+  if (newOnly) t += ' · new only'; $('#boxBtn').textContent = t + ' ▾'; }
+function solidIn(k){ const P = gStreets(k); let n=0; P.forEach(s=>{ const r=stats[s.name]; if(r && r.k>=2) n++; }); return [n, P.length]; }
 function openBoxes(){
-  const L = $('#boxList'); L.innerHTML = '';
-  for (const b of Object.keys(ST.boxes).sort()) {
+  const L = $('#boxList'); L.innerHTML = ''; const c = curSel();
+  document.querySelectorAll('#grpSeg button').forEach(x=>x.classList.toggle('on', x.dataset.g===grp));
+  $('#bxTitle').textContent = grp === 'box' ? 'Choose boxes to drill' : 'Choose neighborhoods to drill';
+  $('#bxHelp').textContent = grp === 'box' ? "Check the boxes you've learned plus the new one you're adding. Questions mix all checked boxes. Missed streets still come up more often."
+    : "Neighborhoods come from the subdivision names on the county map. \"No subdivision\" holds main roads and rural streets. Questions mix all checked neighborhoods.";
+  for (const b of gKeys()) {
     const [n,t] = solidIn(b);
-    const lab = document.createElement('label'); lab.className = sel.has(b) ? 'on' : '';
-    lab.innerHTML = `<input type="checkbox" ${sel.has(b)?'checked':''}><span>Box ${b}<span class="bxs">${n}/${t} solid</span></span>`;
-    lab.querySelector('input').onchange = e => { e.target.checked ? sel.add(b) : sel.delete(b); lab.className = e.target.checked ? 'on' : ''; };
+    const lab = document.createElement('label'); lab.className = c.has(b) ? 'on' : '';
+    lab.innerHTML = `<input type="checkbox" ${c.has(b)?'checked':''}><span></span>`;
+    const sp = lab.querySelector('span'); sp.textContent = gName(b); const sub = document.createElement('span'); sub.className = 'bxs'; sub.textContent = `${n}/${t} solid`; sp.appendChild(sub);
+    lab.querySelector('input').onchange = e => { e.target.checked ? c.add(b) : c.delete(b); lab.className = e.target.checked ? 'on' : ''; };
     L.appendChild(lab);
   }
   $('#bxNew').checked = newOnly; $('#bxNew').parentElement.classList.toggle('hidden', !ST.streets.some(s=>s.isNew));
@@ -212,14 +239,15 @@ function boxBBox(b){ return ST.boxes[b] ? (ST.boxes[b].view || ST.boxes[b].bbox)
 function stationBBox(){ const bs = Object.values(ST.boxes).map(v=>v.bbox); return [Math.min(...bs.map(b=>b[0])), Math.min(...bs.map(b=>b[1])), Math.max(...bs.map(b=>b[2])), Math.max(...bs.map(b=>b[3]))]; }
 function newBBox(){ const b = ST.streets.filter(s=>s.isNew).map(s=>s.bbox); return [Math.min(...b.map(x=>x[0]))-60, Math.min(...b.map(x=>x[1]))-60, Math.max(...b.map(x=>x[2]))+60, Math.max(...b.map(x=>x[3]))+60]; }
 function fitBox(){
-  if (sel.size===0) return fitPt(newOnly ? newBBox() : stationBBox());
-  const bs = [...sel].map(boxBBox).filter(Boolean);
+  const c = curSel();
+  if (c.size===0) return fitPt(newOnly ? newBBox() : stationBBox());
+  const bs = [...c].map(gBBox).filter(Boolean); if (!bs.length) return fitPt(stationBBox());
   fitPt([Math.min(...bs.map(b=>b[0])), Math.min(...bs.map(b=>b[1])), Math.max(...bs.map(b=>b[2])), Math.max(...bs.map(b=>b[3]))]);
 }
 function zoomAt(f, cx, cy){ const ns = Math.max(0.05, Math.min(view.s*f, 4)); f = ns/view.s; view.tx = cx - (cx-view.tx)*f; view.ty = cy - (cy-view.ty)*f; view.s = ns; apply(); }
 // view for a question: the street's box (like the test), tightened if the box is huge
 function questionView(s){
-  const b0 = s.boxes.find(b=>ST.boxes[b] && (sel.size===0 || sel.has(b))) || s.boxes[0];
+  const b0 = s.boxes.find(b=>ST.boxes[b] && (grp!=='box' || sel.size===0 || sel.has(b))) || s.boxes[0];
   let bb = ST.boxes[b0] ? boxBBox(b0).slice() : s.bbox.slice();
   const MAX = Math.min(wrap.clientWidth, wrap.clientHeight) < 500 ? 380 : 500; // pt
   if (bb[2]-bb[0] > MAX || bb[3]-bb[1] > MAX) {
@@ -333,10 +361,11 @@ function studyList(){
   const T = small ? 300 : 420;          // max map width (pt) per page
   const TH = T * Math.max(0.6, Math.min(1.6, H/W));
   const out = [];
-  for (const b of (sel.size ? [...sel] : Object.keys(ST.boxes)).filter(b=>ST.boxes[b]).sort()) {
-    const v = boxBBox(b), w = v[2]-v[0], h = v[3]-v[1];
+  const c = curSel(), keys = gKeys();
+  for (const b of (c.size ? keys.filter(k=>c.has(k)) : keys)) {
+    const v = gBBox(b); if (!v) continue; const w = v[2]-v[0], h = v[3]-v[1];
     const nx = Math.max(1, Math.ceil(w / T - 0.15)), ny = Math.max(1, Math.ceil(h / TH - 0.15));
-    const streets = ST.streets.filter(s=>s.boxes.includes(b));
+    const streets = gStreets(b);
     const tiles = [];
     for (let j=0;j<ny;j++) for (let i=0;i<nx;i++) {
       const tw = w/nx, th = h/ny, ov = 20;
@@ -352,7 +381,7 @@ function showStudyBox(){
   const L = studyList(); if (!L.length) return; studyIdx = ((studyIdx % L.length) + L.length) % L.length;
   const it = L[studyIdx]; fitPt(it.r, 8);
   const part = it.parts > 1 ? ` · part ${it.part} of ${it.parts}` : '';
-  setPrompt(`Box ${it.b}${part} <span style="font-weight:400;color:var(--mute)">(page ${studyIdx+1} of ${L.length})</span>`, `${it.n} streets in box · tap a street to highlight it · ◀ ▶ next page · Write: pen writes, finger pans`);
+  setPrompt(`${esc(gName(it.b))}${part} <span style="font-weight:400;color:var(--mute)">(page ${studyIdx+1} of ${L.length})</span>`, `${it.n} streets in ${grp==='box'?'box':'neighborhood'} · tap a street to highlight it · ◀ ▶ next page · Write: pen writes, finger pans`);
   $('#prevBox').disabled = $('#nextBox').disabled = L.length < 2;
 }
 function setNames(on){ namesOn = on; try { const p = prefs(); p.names = on; localStorage.setItem('do-prefs', JSON.stringify(p)); } catch(e){} const b = $('#namesBtn'); b.textContent = on ? 'Street names: ON' : 'Street names: OFF'; b.classList.toggle('primary', on); drawAllNames(); }
@@ -416,7 +445,8 @@ function updScore(){
   $('#score').textContent = `${solid} solid · ${seen}/${P.length} seen`;
 }
 function setPrompt(main, sub){ $('#prompt').innerHTML = main + (sub ? `<span class="sub">${sub}</span>` : ''); }
-function boxLabel(s){ return (s.boxes.filter(b=>ST.boxes[b]).join(', ') || s.boxes.join(', ')) + (s.isNew ? ' · new street (county GIS ' + s.added + ')' : ''); }
+function esc(t){ return String(t).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function boxLabel(s){ return (s.boxes.filter(b=>ST.boxes[b]).join(', ') || s.boxes.join(', ')) + (s.hoods && s.hoods.length ? ' · ' + esc(s.hoods.join(', ')) : '') + (s.isNew ? ' · new street (county GIS ' + s.added + ')' : ''); }
 
 function start(){
   clearOv(); cur = null; answered = false; $('#feedback').textContent=''; $('#feedback').className='';
@@ -511,8 +541,9 @@ document.querySelectorAll('#ansmode button').forEach(x=>x.classList.toggle('on',
 stSel.onchange = () => setStation(stSel.value);
 $('#boxBtn').onclick = openBoxes;
 $('#bxDone').onclick = closeBoxes;
-$('#bxAll').onclick = () => { Object.keys(ST.boxes).forEach(b=>sel.add(b)); openBoxes(); };
-$('#bxNone').onclick = () => { sel.clear(); openBoxes(); };
+$('#bxAll').onclick = () => { gKeys().forEach(b=>curSel().add(b)); openBoxes(); };
+$('#bxNone').onclick = () => { curSel().clear(); openBoxes(); };
+document.querySelectorAll('#grpSeg button').forEach(b => b.onclick = () => { grp = b.dataset.g; openBoxes(); });
 $('#boxPanel').addEventListener('pointerdown', e => e.stopPropagation());
 $('#review').addEventListener('pointerdown', e => e.stopPropagation());
 
