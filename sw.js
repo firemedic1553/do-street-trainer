@@ -1,5 +1,5 @@
 // Bump VERSION whenever any file changes so devices pick up the update.
-const VERSION = 'v27';
+const VERSION = 'v28';
 const CACHE = 'do-trainer-' + VERSION;
 const FILES = ['./', './index.html', './data.json', './st31.webp', './st32.webp', './st33.webp',
   './manifest.webmanifest', './icon-180.png', './icon-192.png', './icon-512.png'];
