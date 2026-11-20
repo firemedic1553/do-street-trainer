@@ -446,7 +446,7 @@ function updScore(){
 }
 function setPrompt(main, sub){ $('#prompt').innerHTML = main + (sub ? `<span class="sub">${sub}</span>` : ''); }
 function esc(t){ return String(t).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
-function boxLabel(s){ return (s.boxes.filter(b=>ST.boxes[b]).join(', ') || s.boxes.join(', ')) + (s.hoods && s.hoods.length ? ' · ' + esc(s.hoods.join(', ')) : '') + (s.isNew ? ' · new street (county GIS ' + s.added + ')' : ''); }
+function boxLabel(s){ return (s.boxes.filter(b=>ST.boxes[b]).join(', ') || s.boxes.join(', ')) + (s.hoods && s.hoods.length ? ' · ' + esc(s.hoods.join(', ')) : '') + (s.isNew ? ' · new street (added ' + s.added + ')' : ''); }
 
 function start(){
   clearOv(); cur = null; answered = false; $('#feedback').textContent=''; $('#feedback').className='';
