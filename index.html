@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#ffffff">
+<title>Driver Operator Street Map Trainer</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-title" content="Street Trainer">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<style>
+  :root { --bg:#f4f4f2; --panel:#ffffff; --ink:#1d1d1b; --mute:#6b6b66; --line:#dcdcd6; --accent:#c8102e; --good:#1f7a3a; --bad:#b3261e; --hl:#ffcc00; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { margin:0; height:100%; height:100dvh; overscroll-behavior:none; background:var(--bg); color:var(--ink); font:15px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; overflow:hidden; }
+  #app { display:flex; flex-direction:column; height:100%; }
+  header { padding-top:max(8px, env(safe-area-inset-top)); display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:8px 10px; background:var(--panel); border-bottom:1px solid var(--line); }
+  header h1 { font-size:15px; margin:0 8px 0 0; font-weight:700; letter-spacing:.2px; }
+  .seg { display:inline-flex; border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+  .seg button { border:0; background:transparent; padding:7px 11px; font:inherit; color:var(--ink); cursor:pointer; }
+  .seg button + button { border-left:1px solid var(--line); }
+  .seg button.on { background:var(--ink); color:#fff; }
+  select, .btn { font:inherit; padding:7px 10px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink); cursor:pointer; }
+  .btn.primary { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
+  .btn:disabled { opacity:.45; cursor:default; }
+  .spacer { flex:1; }
+  #score { color:var(--mute); font-variant-numeric:tabular-nums; white-space:nowrap; }
+  #mapwrap { -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; position:relative; flex:1; overflow:hidden; background:#e9e9e4; touch-action:none; cursor:grab; }
+  #stage { position:absolute; left:0; top:0; transform-origin:0 0; will-change:transform; }
+  #stage img { max-width:none !important; max-height:none !important; display:block; user-select:none; -webkit-user-drag:none; pointer-events:none; }
+  #stage svg { position:absolute; left:0; top:0; overflow:visible; pointer-events:none; }
+  .hl-under { fill:none; stroke:#000; stroke-linecap:round; stroke-linejoin:round; opacity:.55; }
+  .hl { fill:none; stroke:var(--hl); stroke-linecap:round; stroke-linejoin:round; }
+  .hl.good { stroke:#33c463; } .hl.bad { stroke:#ff4d6d; } .hl.tap { stroke:#4da3ff; }
+  .lbl { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; font-weight:700; fill:#b00020; paint-order:stroke; stroke:#fff; stroke-linejoin:round; }
+  #zoomctl { position:absolute; right:10px; top:10px; display:flex; flex-direction:column; gap:6px; }
+  #zoomctl button { width:40px; height:40px; border-radius:8px; border:1px solid var(--line); background:#fff; font-size:20px; cursor:pointer; }
+  #panel { background:var(--panel); border-top:1px solid var(--line); padding:10px 12px calc(10px + env(safe-area-inset-bottom)); }
+  #prompt { font-size:17px; font-weight:600; margin-bottom:8px; min-height:24px; }
+  #prompt .sub { display:block; font-size:13px; font-weight:400; color:var(--mute); margin-top:2px; }
+  #choices { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+  #choices button { font:inherit; font-size:16px; padding:12px 10px; border-radius:10px; border:1px solid var(--line); background:#fafaf8; cursor:pointer; text-align:left; }
+  #choices button.good { background:#e3f4e8; border-color:var(--good); color:var(--good); font-weight:700; }
+  #choices button.bad { background:#fbe5e3; border-color:var(--bad); color:var(--bad); }
+  #typerow { display:flex; gap:8px; }
+  #typerow input { flex:1; font:inherit; font-size:17px; padding:11px 12px; border:1px solid var(--line); border-radius:10px; text-transform:uppercase; }
+  #feedback { margin-top:8px; min-height:22px; font-weight:600; }
+  #feedback.good { color:var(--good); } #feedback.bad { color:var(--bad); }
+  #actions { display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; }
+  .hidden { display:none !important; }
+  #review { position:absolute; inset:0; background:rgba(0,0,0,.35); display:flex; align-items:center; justify-content:center; z-index:5; }
+  #review .card { background:#fff; border-radius:12px; width:min(560px,92vw); max-height:80vh; overflow:auto; padding:14px 16px; }
+  #review h2 { font-size:16px; margin:0 0 6px; }
+  #review table { width:100%; border-collapse:collapse; font-size:14px; }
+  #review td, #review th { padding:6px 4px; border-bottom:1px solid var(--line); text-align:left; }
+  #review td.n { text-align:right; font-variant-numeric:tabular-nums; }
+  #review tr.click { cursor:pointer; }
+  @media (max-width: 700px) {
+    header { gap:6px; padding:6px 8px; }
+    header h1, header .spacer { display:none; }
+    #station, #boxBtn { flex:1 1 40%; min-width:0; padding:6px 8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .seg button { padding:6px 9px; }
+    #modes { flex:1 1 auto; } #modes button { flex:1; }
+    #score { order:9; flex:1; font-size:12px; }
+    #reviewBtn { order:10; padding:6px 9px; }
+    #zoomctl button { width:34px; height:34px; font-size:18px; }
+    #panel { padding:8px 10px calc(8px + env(safe-area-inset-bottom)); }
+    #prompt { font-size:15px; margin-bottom:6px; }
+    #choices button { font-size:15px; padding:10px 8px; }
+    #actions { margin-top:6px; } #actions .btn { padding:7px 9px; font-size:14px; }
+    #feedback { margin-top:6px; min-height:18px; font-size:14px; }
+  }
+  #drawbar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:8px; padding-top:8px; border-top:1px dashed var(--line); }
+  #inkColors button { font-size:20px; line-height:1; padding:5px 10px; }
+  #inkColors button[data-c="#1a1aff"]{color:#1a1aff} #inkColors button[data-c="#111"]{color:#111} #inkColors button[data-c="#d00000"]{color:#d00000} #inkColors button[data-c="#008a2e"]{color:#008a2e}
+  #inkColors button.on { background:#e8e8e2; outline:2px solid var(--ink); outline-offset:-2px; }
+  #fingerLbl { font-size:14px; color:var(--mute); display:flex; gap:6px; align-items:center; }
+  #fingerLbl input { width:20px; height:20px; }
+  .ink { fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  #boxPanel { position:absolute; inset:0; background:rgba(0,0,0,.35); display:flex; align-items:flex-start; justify-content:center; z-index:6; padding-top:12px; }
+  #boxPanel .card { background:#fff; border-radius:12px; width:min(520px,94vw); max-height:86%; overflow:auto; padding:14px 16px; }
+  #boxPanel h2 { font-size:16px; margin:0 0 6px; }
+  #boxList { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px; }
+  #boxList label { display:flex; gap:8px; align-items:center; border:1px solid var(--line); border-radius:10px; padding:10px; cursor:pointer; font-size:15px; }
+  #boxList label.on { border-color:var(--ink); background:#f3f3ef; }
+  #boxList input { width:20px; height:20px; }
+  #boxList .bxs { display:block; font-size:12px; color:var(--mute); }
+  #loading { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:var(--mute); font-size:15px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>D/O Street Trainer</h1>
+    <select id="station" aria-label="Station"></select>
+    <button class="btn" id="boxBtn" aria-label="Choose boxes">All boxes ▾</button>
+    <div class="seg" id="modes">
+      <button data-m="name" class="on">Name it</button>
+      <button data-m="find">Find it</button>
+      <button data-m="study">Study</button>
+    </div>
+    <div class="seg" id="ansmode">
+      <button data-a="choice" class="on">Pick</button>
+      <button data-a="type">Type</button>
+    </div>
+    <span class="spacer"></span>
+    <span id="score"></span>
+    <button class="btn" id="reviewBtn">Misses</button>
+  </header>
+  <div id="mapwrap">
+    <div id="stage"><img id="mapimg" alt="Blank district map"><svg id="ov"></svg></div>
+    <div id="zoomctl"><button id="zin" aria-label="Zoom in">+</button><button id="zout" aria-label="Zoom out">−</button><button id="zfit" aria-label="Fit" style="font-size:13px">Fit</button></div>
+    <div id="loading">Loading map…</div>
+    <div id="boxPanel" class="hidden"><div class="card">
+      <h2>Choose boxes to drill</h2>
+      <p style="margin:0 0 8px;color:var(--mute);font-size:13px">Check the boxes you've learned plus the new one you're adding. Questions mix all checked boxes. Missed streets still come up more often.</p>
+      <div id="boxQuick" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px"><button class="btn" id="bxAll">Select all</button><button class="btn" id="bxNone">Clear</button><label style="display:flex;gap:6px;align-items:center;font-size:14px"><input type="checkbox" id="bxNew" style="width:20px;height:20px"> New streets only</label></div>
+      <div id="boxList"></div>
+      <div style="display:flex;gap:8px;margin-top:12px"><button class="btn primary" id="bxDone">Done</button></div>
+    </div></div>
+    <div id="review" class="hidden"><div class="card">
+      <h2>Streets you've missed</h2>
+      <p style="margin:0 0 8px;color:var(--mute);font-size:13px">Tap a street to see it on the map. Missed streets come up more often in Name it / Find it.</p>
+      <table><thead><tr><th>Street</th><th>Box</th><th class="n">Missed</th><th class="n">Right</th></tr></thead><tbody id="revbody"></tbody></table>
+      <div id="actions2" style="display:flex;gap:8px;margin-top:10px"><button class="btn" id="revClose">Close</button><button class="btn" id="revReset">Reset this station's progress</button></div>
+    </div></div>
+  </div>
+  <div id="panel">
+    <div id="prompt"></div>
+    <div id="choices"></div>
+    <div id="typerow" class="hidden"><input id="typed" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Street name"><button class="btn primary" id="submitTyped">Check</button></div>
+    <div id="feedback"></div>
+    <div id="actions"><button class="btn primary" id="next">Next street</button><button class="btn" id="showAround">Show nearby names</button><button class="btn" id="skip">Skip</button><button class="btn" id="prevBox">◀ Prev</button><button class="btn" id="nextBox">Next ▶</button><button class="btn" id="namesBtn">Street names: OFF</button><button class="btn" id="drawBtn">✏️ Write: OFF</button></div>
+    <div id="drawbar" class="hidden">
+      <div class="seg" id="inkColors"><button data-c="#1a1aff" class="on" aria-label="Blue">●</button><button data-c="#111" aria-label="Black">●</button><button data-c="#d00000" aria-label="Red">●</button><button data-c="#008a2e" aria-label="Green">●</button></div>
+      <div class="seg" id="inkTool"><button data-t="pen" class="on">Pen</button><button data-t="erase">Eraser</button></div>
+      <button class="btn" id="inkUndo">Undo</button>
+      <button class="btn" id="inkHide">Hide ink</button>
+      <button class="btn" id="inkClear">Clear</button>
+      <label id="fingerLbl"><input type="checkbox" id="inkFinger"> Write with finger</label>
+    </div>
+  </div>
+</div>
+<script>
+(async function(){
+const Z = 2.0;
+const $ = s => document.querySelector(s);
+const wrap = $('#mapwrap'), stage = $('#stage'), img = $('#mapimg'), ov = $('#ov');
+const NS = 'http://www.w3.org/2000/svg';
+let DATA, ST, stKey, view = {s:1, tx:0, ty:0};
+let mode = 'name', ans = 'choice', sel = new Set(), newOnly = false, cur = null, answered = false, lastName = null;
+let stats = {};
+
+// ---------- storage ----------
+function load(){ try { stats = JSON.parse(localStorage.getItem('do-stats-'+stKey) || '{}'); } catch(e){ stats = {}; } }
+function save(){ try { localStorage.setItem('do-stats-'+stKey, JSON.stringify(stats)); } catch(e){} }
+function rec(name, ok){ const r = stats[name] || (stats[name] = {r:0,w:0,k:0}); if(ok){ r.r++; r.k++; } else { r.w++; r.k = 0; } save(); }
+function prefs(){ try { return JSON.parse(localStorage.getItem('do-prefs')||'{}'); } catch(e){ return {}; } }
+function savePrefs(){ try { const p = prefs(); p.stKey = stKey; p.mode = mode; p.ans = ans; p.sel = p.sel || {}; p.sel[stKey] = {b:[...sel], n:newOnly}; localStorage.setItem('do-prefs', JSON.stringify(p)); } catch(e){} }
+
+// ---------- data ----------
+try { DATA = await (await fetch('data.json')).json(); }
+catch(e){ $('#loading').textContent = 'Could not load the map data.'; return; }
+const P = prefs();
+const stSel = $('#station');
+for (const k of Object.keys(DATA.stations)) { const o = document.createElement('option'); o.value = k; o.textContent = 'Station ' + k; stSel.appendChild(o); }
+if (P.mode) mode = P.mode; if (P.ans) ans = P.ans;
+
+function setStation(k, keepBox){
+  stKey = k; ST = DATA.stations[k]; stSel.value = k; load();
+  const saved = (prefs().sel || {})[k];
+  sel = new Set(saved ? saved.b.filter(b => ST.boxes[b]) : []); newOnly = !!(saved && saved.n);
+  boxLabelUpd();
+  ST.streets.forEach(s => { if(!s._len){ let L=0; s.lines.forEach(l=>{ for(let i=1;i<l.length;i++) L+=Math.hypot(l[i][0]-l[i-1][0], l[i][1]-l[i-1][1]); }); s._len=L; } });
+  $('#loading').classList.remove('hidden');
+  img.onload = () => { $('#loading').classList.add('hidden'); fitBox(); start(); };
+  img.src = ST.img; img.width = ST.imgW; img.height = ST.imgH;
+  const [x0,y0,x1,y1] = ST.clip;
+  ov.setAttribute('viewBox', `${x0} ${y0} ${x1-x0} ${y1-y0}`); ov.setAttribute('width', ST.imgW); ov.setAttribute('height', ST.imgH); initOv();
+  updScore(); savePrefs();
+}
+function pool(){ return ST.streets.filter(s => (sel.size===0 || s.boxes.some(b=>sel.has(b))) && (!newOnly || s.isNew)); }
+function boxLabelUpd(){ const b = [...sel].sort(); let t = b.length===0 ? 'All boxes' : b.length<=3 ? 'Box ' + b.join(', ') : b.length + ' boxes'; if (newOnly) t += ' · new only'; $('#boxBtn').textContent = t + ' ▾'; }
+function solidIn(b){ const P = ST.streets.filter(s=>s.boxes.includes(b)); let n=0; P.forEach(s=>{ const r=stats[s.name]; if(r && r.k>=2) n++; }); return [n, P.length]; }
+function openBoxes(){
+  const L = $('#boxList'); L.innerHTML = '';
+  for (const b of Object.keys(ST.boxes).sort()) {
+    const [n,t] = solidIn(b);
+    const lab = document.createElement('label'); lab.className = sel.has(b) ? 'on' : '';
+    lab.innerHTML = `<input type="checkbox" ${sel.has(b)?'checked':''}><span>Box ${b}<span class="bxs">${n}/${t} solid</span></span>`;
+    lab.querySelector('input').onchange = e => { e.target.checked ? sel.add(b) : sel.delete(b); lab.className = e.target.checked ? 'on' : ''; };
+    L.appendChild(lab);
+  }
+  $('#bxNew').checked = newOnly; $('#bxNew').parentElement.classList.toggle('hidden', !ST.streets.some(s=>s.isNew));
+  $('#boxPanel').classList.remove('hidden');
+}
+function closeBoxes(){ newOnly = $('#bxNew').checked; $('#boxPanel').classList.add('hidden'); boxLabelUpd(); savePrefs(); updScore(); start(); }
+
+// ---------- view / pan-zoom ----------
+function apply(){ stage.style.transform = `translate(${view.tx}px,${view.ty}px) scale(${view.s})`; rescaleStrokes(); if (namesOn) { clearTimeout(lblTimer); lblTimer = setTimeout(drawAllNames, 120); } }
+function ptToPx(x,y){ return [(x-ST.clip[0])*Z, (y-ST.clip[1])*Z]; }
+function fitPt(b, pad){
+  const W = wrap.clientWidth, H = wrap.clientHeight; pad = pad ?? 30;
+  const [ax,ay] = ptToPx(b[0],b[1]), [bx,by] = ptToPx(b[2],b[3]);
+  const s = Math.min((W-2*pad)/Math.max(bx-ax,1), (H-2*pad)/Math.max(by-ay,1));
+  view.s = Math.max(0.05, Math.min(s, 3));
+  view.tx = W/2 - (ax+bx)/2*view.s; view.ty = H/2 - (ay+by)/2*view.s; apply();
+}
+function boxBBox(b){ return ST.boxes[b] ? (ST.boxes[b].view || ST.boxes[b].bbox) : null; }
+function stationBBox(){ const bs = Object.values(ST.boxes).map(v=>v.bbox); return [Math.min(...bs.map(b=>b[0])), Math.min(...bs.map(b=>b[1])), Math.max(...bs.map(b=>b[2])), Math.max(...bs.map(b=>b[3]))]; }
+function newBBox(){ const b = ST.streets.filter(s=>s.isNew).map(s=>s.bbox); return [Math.min(...b.map(x=>x[0]))-60, Math.min(...b.map(x=>x[1]))-60, Math.max(...b.map(x=>x[2]))+60, Math.max(...b.map(x=>x[3]))+60]; }
+function fitBox(){
+  if (sel.size===0) return fitPt(newOnly ? newBBox() : stationBBox());
+  const bs = [...sel].map(boxBBox).filter(Boolean);
+  fitPt([Math.min(...bs.map(b=>b[0])), Math.min(...bs.map(b=>b[1])), Math.max(...bs.map(b=>b[2])), Math.max(...bs.map(b=>b[3]))]);
+}
+function zoomAt(f, cx, cy){ const ns = Math.max(0.05, Math.min(view.s*f, 4)); f = ns/view.s; view.tx = cx - (cx-view.tx)*f; view.ty = cy - (cy-view.ty)*f; view.s = ns; apply(); }
+// view for a question: the street's box (like the test), tightened if the box is huge
+function questionView(s){
+  const b0 = s.boxes.find(b=>ST.boxes[b] && (sel.size===0 || sel.has(b))) || s.boxes[0];
+  let bb = ST.boxes[b0] ? boxBBox(b0).slice() : s.bbox.slice();
+  const MAX = Math.min(wrap.clientWidth, wrap.clientHeight) < 500 ? 380 : 500; // pt
+  if (bb[2]-bb[0] > MAX || bb[3]-bb[1] > MAX) {
+    const cx = (s.bbox[0]+s.bbox[2])/2, cy = (s.bbox[1]+s.bbox[3])/2;
+    const half = Math.max(MAX/2, (s.bbox[2]-s.bbox[0])/2+80, (s.bbox[3]-s.bbox[1])/2+80);
+    bb = [cx-half, cy-half, cx+half, cy+half];
+  }
+  bb = [Math.min(bb[0], s.bbox[0]-40), Math.min(bb[1], s.bbox[1]-40), Math.max(bb[2], s.bbox[2]+40), Math.max(bb[3], s.bbox[3]+40)];
+  fitPt(bb, 16);
+}
+
+let pts = new Map(), drag = null, downAt = null, pinch0 = null;
+wrap.addEventListener('pointerdown', e => { if (e.target.closest && e.target.closest('#zoomctl,#review,#boxPanel')) return; if (curStroke) return; if (wantsInk(e)) { wrap.setPointerCapture(e.pointerId); e.preventDefault(); inkStart(e); curStroke && (curStroke.pid = e.pointerId); return; } if (drawOn && penSeen && e.pointerType==='touch' && curStroke) return; wrap.setPointerCapture(e.pointerId); pts.set(e.pointerId, [e.clientX, e.clientY]); downAt = {x:e.clientX, y:e.clientY, t:Date.now(), n:pts.size}; drag = {x:e.clientX, y:e.clientY, tx:view.tx, ty:view.ty}; if (pts.size===2) pinch0 = pinchInfo(); });
+wrap.addEventListener('pointermove', e => {
+  if (curStroke && e.pointerId === curStroke.pid) { inkMove(e); return; }
+  if (!pts.has(e.pointerId)) return; pts.set(e.pointerId, [e.clientX, e.clientY]);
+  if (pts.size===2 && pinch0) { const p = pinchInfo(); const r = wrap.getBoundingClientRect(); zoomAt(p.d/pinch0.d, p.cx-r.left, p.cy-r.top); view.tx += p.cx-pinch0.cx; view.ty += p.cy-pinch0.cy; apply(); pinch0 = p; }
+  else if (pts.size===1 && drag) { view.tx = drag.tx + e.clientX-drag.x; view.ty = drag.ty + e.clientY-drag.y; apply(); }
+});
+function up(e){
+  if (curStroke && e.pointerId === curStroke.pid) { inkEnd(); return; }
+  const wasTap = downAt && downAt.n===1 && pts.size===1 && Math.hypot(e.clientX-downAt.x, e.clientY-downAt.y) < 8 && Date.now()-downAt.t < 600;
+  pts.delete(e.pointerId); if (pts.size<2) pinch0 = null;
+  if (pts.size===1) { const [x,y] = [...pts.values()][0]; drag = {x, y, tx:view.tx, ty:view.ty}; } else drag = null;
+  if (wasTap) onTap(e);
+}
+wrap.addEventListener('pointerup', up); wrap.addEventListener('pointercancel', up);
+function pinchInfo(){ const [a,b] = [...pts.values()]; return {d:Math.hypot(a[0]-b[0], a[1]-b[1]) || 1, cx:(a[0]+b[0])/2, cy:(a[1]+b[1])/2}; }
+wrap.addEventListener('wheel', e => { e.preventDefault(); const r = wrap.getBoundingClientRect(); zoomAt(Math.exp(-e.deltaY*0.0015), e.clientX-r.left, e.clientY-r.top); }, {passive:false});
+$('#zin').onclick = () => zoomAt(1.4, wrap.clientWidth/2, wrap.clientHeight/2);
+$('#zout').onclick = () => zoomAt(1/1.4, wrap.clientWidth/2, wrap.clientHeight/2);
+$('#zfit').onclick = () => mode==='study' ? showStudyBox() : cur ? questionView(cur) : fitBox();
+window.addEventListener('resize', () => mode==='study' ? showStudyBox() : cur ? questionView(cur) : fitBox());
+
+// ---------- drawing ----------
+function pathD(s){ return s.lines.map(l => 'M' + l.map(p => p[0]+' '+p[1]).join('L')).join(''); }
+let layers = [];
+let FX, BASE, LBL, INK, namesOn = !!prefs().names, lblTimer = null;
+// ---------- ink ----------
+let drawOn = false, inkColor = '#1a1aff', inkTool = 'pen', strokes = [], curStroke = null, inkHidden = false, penSeen = false;
+function inkKey(){ return 'do-ink-' + stKey; }
+function loadInk(){ try { strokes = JSON.parse(localStorage.getItem(inkKey()) || '[]'); } catch(e){ strokes = []; } renderInk(); }
+function saveInk(){ try { localStorage.setItem(inkKey(), JSON.stringify(strokes)); } catch(e){} }
+function strokePath(st){ return 'M' + st.p.map(q => q[0].toFixed(1)+' '+q[1].toFixed(1)).join('L'); }
+function renderInk(){ if (!INK) return; INK.innerHTML = ''; INK.style.display = inkHidden ? 'none' : '';
+  for (const st of strokes){ const p = document.createElementNS(NS,'path'); p.setAttribute('class','ink'); p.setAttribute('d', strokePath(st)); p.setAttribute('stroke', st.c); p.setAttribute('stroke-width', st.w); INK.appendChild(p); st._el = p; } }
+function toPt(e){ const r = wrap.getBoundingClientRect(), k = 1/(view.s*Z); return [(e.clientX - r.left - view.tx)*k + ST.clip[0], (e.clientY - r.top - view.ty)*k + ST.clip[1]]; }
+function wantsInk(e){ if (!drawOn) return false; if (e.pointerType === 'pen') { penSeen = true; return true; } if (e.pointerType === 'mouse') return true; return $('#inkFinger').checked && pts.size === 0; }
+function eraseAt(q){ const k = 1/(view.s*Z), tol = 14*k; let hit = false;
+  strokes = strokes.filter(st => { for (let i=1;i<st.p.length;i++) if (segD(q[0],q[1],st.p[i-1],st.p[i]) < tol + st.w/2) { hit = true; return false; } if (st.p.length===1 && Math.hypot(q[0]-st.p[0][0], q[1]-st.p[0][1]) < tol) { hit = true; return false; } return true; });
+  if (hit) { renderInk(); saveInk(); } }
+function inkStart(e){ const q = toPt(e); if (inkTool === 'erase') { curStroke = {erase:true}; eraseAt(q); return; }
+  const k = 1/(view.s*Z); curStroke = {c: inkColor, w: +(2.4*k).toFixed(2), p:[q]};
+  const p = document.createElementNS(NS,'path'); p.setAttribute('class','ink'); p.setAttribute('stroke', curStroke.c); p.setAttribute('stroke-width', curStroke.w); p.setAttribute('d', strokePath(curStroke)); INK.appendChild(p); curStroke._el = p; INK.style.display=''; inkHidden=false; updInkHide(); }
+function inkMove(e){ if (!curStroke) return; const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+  if (curStroke.erase) { evs.forEach(ev => eraseAt(toPt(ev))); return; }
+  const k = 1/(view.s*Z); for (const ev of evs){ const q = toPt(ev), l = curStroke.p[curStroke.p.length-1]; if (Math.hypot(q[0]-l[0], q[1]-l[1]) > 0.6*k) curStroke.p.push(q); }
+  curStroke._el.setAttribute('d', strokePath(curStroke)); }
+function inkEnd(){ if (curStroke && !curStroke.erase) { strokes.push(curStroke); saveInk(); } curStroke = null; }
+function updInkHide(){ $('#inkHide').textContent = inkHidden ? 'Show ink' : 'Hide ink'; }
+function setDraw(on){ drawOn = on; $('#drawBtn').textContent = on ? '✏️ Write: ON' : '✏️ Write: OFF'; $('#drawBtn').classList.toggle('primary', on); $('#drawbar').classList.toggle('hidden', !on); wrap.style.cursor = on ? 'crosshair' : ''; }
+function initOv(){ ov.innerHTML = ''; BASE = document.createElementNS(NS,'g'); FX = document.createElementNS(NS,'g'); LBL = document.createElementNS(NS,'g'); INK = document.createElementNS(NS,'g'); ov.appendChild(BASE); ov.appendChild(FX); ov.appendChild(LBL); ov.appendChild(INK); loadInk();
+  ST.streets.filter(s=>s.isNew || s.newLines).forEach(s => { const p = document.createElementNS(NS,'path'); p.setAttribute('d', pathD(s.isNew ? s : {lines: s.newLines.map(i=>s.lines[i])})); p.setAttribute('fill','none'); p.setAttribute('stroke','#111'); p.setAttribute('stroke-width','1'); p.setAttribute('stroke-linecap','round'); BASE.appendChild(p); }); }
+function clearOv(){ FX.innerHTML = ''; layers = []; }
+function drawStreet(s, cls){
+  const d = pathD(s);
+  const u = document.createElementNS(NS,'path'); u.setAttribute('d', d); u.setAttribute('class','hl-under');
+  const p = document.createElementNS(NS,'path'); p.setAttribute('d', d); p.setAttribute('class','hl '+(cls||''));
+  FX.appendChild(u); FX.appendChild(p); layers.push(u, p); rescaleStrokes();
+}
+function rescaleStrokes(){
+  const k = 1/(view.s*Z); // pt per screen px
+  ov.querySelectorAll('.hl-under').forEach(e => e.setAttribute('stroke-width', 11*k));
+  ov.querySelectorAll('.hl').forEach(e => e.setAttribute('stroke-width', 7*k));
+  ov.querySelectorAll('.lbl').forEach(e => { e.setAttribute('font-size', 12*k); e.setAttribute('stroke-width', 3*k); });
+}
+function drawAllNames(){
+  if (!LBL) return; LBL.innerHTML = '';
+  if (!namesOn) return;
+  const k = 1/(view.s*Z), W = wrap.clientWidth, H = wrap.clientHeight;
+  const x0 = -view.tx*k + ST.clip[0], y0 = -view.ty*k + ST.clip[1], x1 = x0 + W*k, y1 = y0 + H*k;
+  const fs = 12, placed = [];
+  const cands = [];
+  for (const s of visibleStreets()) {
+    if (mode !== 'study' && cur && s.name === cur.name && !answered) continue; // don't give away the answer
+    // longest segment inside the view
+    let best = null;
+    s.lines.forEach(l => { for (let i=1;i<l.length;i++){ const a=l[i-1], b=l[i]; const mx=(a[0]+b[0])/2, my=(a[1]+b[1])/2; if (mx<x0||mx>x1||my<y0||my>y1) continue; const L=Math.hypot(b[0]-a[0], b[1]-a[1]); if(!best||L>best.L) best={L,a,b,mx,my}; } });
+    if (best) cands.push({s, ...best});
+  }
+  cands.sort((p,q) => q.L - p.L);
+  for (const c of cands) {
+    let ang = Math.atan2(c.b[1]-c.a[1], c.b[0]-c.a[0]); if (ang>Math.PI/2) ang-=Math.PI; if (ang<-Math.PI/2) ang+=Math.PI;
+    const w = c.s.name.length*fs*0.62 + 6, h = fs + 4;
+    const sx = (c.mx-ST.clip[0])/k + view.tx, sy = (c.my-ST.clip[1])/k + view.ty;
+    const cos = Math.abs(Math.cos(ang)), sin = Math.abs(Math.sin(ang));
+    const bw = w*cos + h*sin, bh = w*sin + h*cos;
+    const r = [sx-bw/2, sy-bh/2, sx+bw/2, sy+bh/2];
+    if (placed.some(p => r[0]<p[2] && r[2]>p[0] && r[1]<p[3] && r[3]>p[1])) continue;
+    placed.push(r);
+    const deg = ang*180/Math.PI;
+    const t = document.createElementNS(NS,'text'); t.setAttribute('class','lbl'); t.setAttribute('x',c.mx); t.setAttribute('y',c.my);
+    t.setAttribute('text-anchor','middle'); t.setAttribute('dominant-baseline','central'); t.setAttribute('transform',`rotate(${deg} ${c.mx} ${c.my})`);
+    t.setAttribute('font-size', fs*k); t.setAttribute('stroke-width', 3*k);
+    t.textContent = c.s.name; LBL.appendChild(t);
+  }
+}
+let studyIdx = 0;
+function studyList(){
+  const W = wrap.clientWidth, H = wrap.clientHeight, small = Math.min(W,H) < 500;
+  const T = small ? 300 : 420;          // max map width (pt) per page
+  const TH = T * Math.max(0.6, Math.min(1.6, H/W));
+  const out = [];
+  for (const b of (sel.size ? [...sel] : Object.keys(ST.boxes)).filter(b=>ST.boxes[b]).sort()) {
+    const v = boxBBox(b), w = v[2]-v[0], h = v[3]-v[1];
+    const nx = Math.max(1, Math.ceil(w / T - 0.15)), ny = Math.max(1, Math.ceil(h / TH - 0.15));
+    const streets = ST.streets.filter(s=>s.boxes.includes(b));
+    const tiles = [];
+    for (let j=0;j<ny;j++) for (let i=0;i<nx;i++) {
+      const tw = w/nx, th = h/ny, ov = 20;
+      const r = [v[0]+i*tw-ov, v[1]+j*th-ov, v[0]+(i+1)*tw+ov, v[1]+(j+1)*th+ov];
+      const has = streets.some(s => s.lines.some(l => l.some(p => p[0]>=r[0]&&p[0]<=r[2]&&p[1]>=r[1]&&p[1]<=r[3])));
+      if (has) tiles.push(r);
+    }
+    tiles.forEach((r,k) => out.push({b, r, part:k+1, parts:tiles.length, n:streets.length}));
+  }
+  return out;
+}
+function showStudyBox(){
+  const L = studyList(); if (!L.length) return; studyIdx = ((studyIdx % L.length) + L.length) % L.length;
+  const it = L[studyIdx]; fitPt(it.r, 8);
+  const part = it.parts > 1 ? ` · part ${it.part} of ${it.parts}` : '';
+  setPrompt(`Box ${it.b}${part} <span style="font-weight:400;color:var(--mute)">(page ${studyIdx+1} of ${L.length})</span>`, `${it.n} streets in box · tap a street to highlight it · ◀ ▶ next page · Write: pen writes, finger pans`);
+  $('#prevBox').disabled = $('#nextBox').disabled = L.length < 2;
+}
+function setNames(on){ namesOn = on; try { const p = prefs(); p.names = on; localStorage.setItem('do-prefs', JSON.stringify(p)); } catch(e){} const b = $('#namesBtn'); b.textContent = on ? 'Street names: ON' : 'Street names: OFF'; b.classList.toggle('primary', on); drawAllNames(); }
+function labelStreet(s){
+  // put the name along the longest segment run
+  let best = null;
+  s.lines.forEach(l => { for (let i=1;i<l.length;i++){ const L = Math.hypot(l[i][0]-l[i-1][0], l[i][1]-l[i-1][1]); if(!best || L>best.L) best = {L, a:l[i-1], b:l[i]}; } });
+  if (!best) return;
+  let ang = Math.atan2(best.b[1]-best.a[1], best.b[0]-best.a[0]) * 180/Math.PI; if (ang>90) ang-=180; if (ang<-90) ang+=180;
+  const cx = (best.a[0]+best.b[0])/2, cy = (best.a[1]+best.b[1])/2;
+  const t = document.createElementNS(NS,'text'); t.setAttribute('class','lbl'); t.setAttribute('x',cx); t.setAttribute('y',cy);
+  t.setAttribute('text-anchor','middle'); t.setAttribute('dominant-baseline','central'); t.setAttribute('transform',`rotate(${ang} ${cx} ${cy})`);
+  t.textContent = s.name; FX.appendChild(t);
+}
+function visibleStreets(){
+  const W = wrap.clientWidth, H = wrap.clientHeight, k = 1/(view.s*Z);
+  const x0 = -view.tx*k + ST.clip[0], y0 = -view.ty*k + ST.clip[1], x1 = x0 + W*k, y1 = y0 + H*k;
+  return ST.streets.filter(s => s.bbox[2]>x0 && s.bbox[0]<x1 && s.bbox[3]>y0 && s.bbox[1]<y1);
+}
+
+// ---------- hit test ----------
+function segD(px,py,a,b){ const dx=b[0]-a[0], dy=b[1]-a[1], L=dx*dx+dy*dy; let t = L ? ((px-a[0])*dx+(py-a[1])*dy)/L : 0; t=Math.max(0,Math.min(1,t)); return Math.hypot(px-a[0]-t*dx, py-a[1]-t*dy); }
+function hit(e){
+  const r = wrap.getBoundingClientRect(), k = 1/(view.s*Z);
+  const x = (e.clientX - r.left - view.tx)*k + ST.clip[0], y = (e.clientY - r.top - view.ty)*k + ST.clip[1];
+  let best = null; const tol = 22*k;
+  for (const s of ST.streets) {
+    if (x < s.bbox[0]-tol || x > s.bbox[2]+tol || y < s.bbox[1]-tol || y > s.bbox[3]+tol) continue;
+    for (const l of s.lines) for (let i=1;i<l.length;i++){ const d = segD(x,y,l[i-1],l[i]); if (d<tol && (!best || d<best.d)) best = {d, s}; }
+  }
+  return best && best.s;
+}
+
+// ---------- quiz ----------
+function weight(s){ const r = stats[s.name]; if(!r) return 3; if (r.w > r.r) return 6; return Math.max(0.25, 3/(1+r.k*1.5)) + (r.w ? 1.5 : 0); }
+function pick(){
+  const P = pool().filter(s => s.name !== lastName); if (!P.length) return pool()[0];
+  const tot = P.reduce((a,s)=>a+weight(s),0); let r = Math.random()*tot;
+  for (const s of P){ r -= weight(s); if (r<=0) return s; } return P[P.length-1];
+}
+function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j = Math.random()*(i+1)|0; [a[i],a[j]]=[a[j],a[i]]; } return a; }
+function distractors(s){
+  const cx = (s.bbox[0]+s.bbox[2])/2, cy = (s.bbox[1]+s.bbox[3])/2;
+  const near = ST.streets.filter(t => t.name!==s.name).map(t => ({t, d:Math.hypot((t.bbox[0]+t.bbox[2])/2-cx, (t.bbox[1]+t.bbox[3])/2-cy)})).sort((a,b)=>a.d-b.d).slice(0,10).map(o=>o.t);
+  return shuffle(near).slice(0,3);
+}
+const SYN = {SPRINGS:'SPGS',SPRING:'SPG',CREEK:'CRK',HOLLOW:'HOLW',DRIVE:'DR',STREET:'ST',ROAD:'RD',LANE:'LN',COURT:'CT',COVE:'CV',CIRCLE:'CIR',TRAIL:'TRL',BOULEVARD:'BLVD',PARKWAY:'PKWY',BEND:'BND',CROSSING:'XING',AVENUE:'AVE',PLACE:'PL',VALLEY:'VLY',TRACE:'TRCE',MOUNTAIN:'MTN',GROVE:'GRV',TERRACE:'TER',NORTH:'N',SOUTH:'S',EAST:'E',WEST:'W',HIGHWAY:'HWY',PASSAGE:'PASS'};
+const SUF = new Set(Object.values(SYN).concat(['WAY','LOOP','RUN','PATH','PASS','DRAW']));
+function norm(t){ return t.toUpperCase().replace(/[^A-Z0-9 ]/g,' ').split(/\s+/).filter(Boolean).map(w=>SYN[w]||w); }
+function grade(input, s){
+  const a = norm(input), b = norm(s.raw);
+  if (a.join(' ') === b.join(' ')) return 'exact';
+  const strip = x => (x.length>1 && SUF.has(x[x.length-1])) ? x.slice(0,-1) : x;
+  if (strip(a).join(' ') === strip(b).join(' ') && strip(a).length) return 'base';
+  return 'no';
+}
+
+function updScore(){
+  const P = pool(); let seen=0, solid=0;
+  P.forEach(s => { const r = stats[s.name]; if(r){ seen++; if (r.k>=2) solid++; } });
+  $('#score').textContent = `${solid} solid · ${seen}/${P.length} seen`;
+}
+function setPrompt(main, sub){ $('#prompt').innerHTML = main + (sub ? `<span class="sub">${sub}</span>` : ''); }
+function boxLabel(s){ return (s.boxes.filter(b=>ST.boxes[b]).join(', ') || s.boxes.join(', ')) + (s.isNew ? ' · new street (county GIS ' + s.added + ')' : ''); }
+
+function start(){
+  clearOv(); cur = null; answered = false; $('#feedback').textContent=''; $('#feedback').className='';
+  $('#choices').innerHTML = ''; $('#typerow').classList.add('hidden');
+  const inQuiz = mode !== 'study';
+  $('#next').classList.toggle('hidden', !inQuiz); $('#skip').classList.toggle('hidden', !inQuiz); $('#ansmode').classList.toggle('hidden', mode!=='name');
+  $('#showAround').textContent = 'Show nearby names'; $('#showAround').classList.toggle('hidden', !inQuiz); $('#prevBox').classList.toggle('hidden', inQuiz); $('#nextBox').classList.toggle('hidden', inQuiz); $('#drawBtn').classList.toggle('hidden', inQuiz); if (inQuiz) setDraw(false);
+  setNames(namesOn);
+  if (mode === 'study') { studyIdx = 0; showStudyBox(); return; }
+  nextQ();
+}
+function nextQ(){
+  clearOv(); answered = false; $('#feedback').textContent=''; $('#feedback').className=''; $('#showAround').disabled = true;
+  cur = pick(); if (!cur) { setPrompt('No streets in this box.'); return; }
+  lastName = cur.name;
+  if (mode === 'name') {
+    questionView(cur); drawStreet(cur);
+    setPrompt('Name the highlighted street.', 'Box ' + boxLabel(cur));
+    if (ans === 'choice') {
+      $('#typerow').classList.add('hidden');
+      const opts = shuffle([cur, ...distractors(cur)]);
+      $('#choices').innerHTML = '';
+      opts.forEach(o => { const b = document.createElement('button'); b.textContent = o.name; b.onclick = () => answerChoice(o, b); $('#choices').appendChild(b); });
+    } else {
+      $('#choices').innerHTML = ''; $('#typerow').classList.remove('hidden'); const i = $('#typed'); i.value=''; setTimeout(()=>i.focus(), 50);
+    }
+  } else {
+    $('#choices').innerHTML = ''; $('#typerow').classList.add('hidden');
+    questionView(cur);
+    setPrompt(`Tap <u>${cur.name}</u> on the map.`, 'Box ' + boxLabel(cur));
+  }
+}
+function finish(ok, msg){
+  answered = true; rec(cur.name, ok); updScore(); $('#showAround').disabled = false;
+  $('#feedback').className = ok ? 'good' : 'bad'; $('#feedback').textContent = msg;
+  if (namesOn) drawAllNames();
+}
+function answerChoice(o, btn){
+  if (answered) return;
+  const ok = o.name === cur.name;
+  [...$('#choices').children].forEach(b => { if (b.textContent === cur.name) b.classList.add('good'); });
+  if (!ok) btn.classList.add('bad');
+  clearOv(); drawStreet(cur, ok ? 'good' : 'bad');
+  if (!ok) { drawStreet(o, 'tap'); }
+  finish(ok, ok ? `Correct — ${cur.name}.` : `It's ${cur.name}. (${o.name} is shown in blue.)`);
+}
+function answerTyped(){
+  if (answered || !cur) return;
+  const v = $('#typed').value.trim(); if (!v) return;
+  const g = grade(v, cur);
+  clearOv(); drawStreet(cur, g==='no' ? 'bad' : 'good');
+  if (g==='exact') finish(true, `Correct — ${cur.name}.`);
+  else if (g==='base') finish(true, `Right street — full name is ${cur.name}.`);
+  else finish(false, `It's ${cur.name}.`);
+}
+$('#submitTyped').onclick = answerTyped;
+$('#typed').addEventListener('keydown', e => { if (e.key==='Enter') { if (answered) nextQ(); else answerTyped(); } });
+
+function onTap(e){
+  const s = hit(e);
+  if (mode === 'study') {
+    clearOv(); if (s) { drawStreet(s, 'tap'); $('#feedback').className=''; $('#feedback').textContent = s.name + ' — Box ' + boxLabel(s); } else $('#feedback').textContent=''; return;
+  }
+  if (mode === 'find' && cur && !answered) {
+    if (!s) return;
+    const ok = s.name === cur.name;
+    clearOv(); drawStreet(cur, ok ? 'good' : 'bad'); if (!ok) drawStreet(s, 'tap');
+    finish(ok, ok ? `Correct — that's ${cur.name}.` : `You tapped ${s.name} (blue). ${cur.name} is shown in red.`);
+    return;
+  }
+  if (answered && s) { setPrompt(s.name, 'Box ' + boxLabel(s)); clearOv(); drawStreet(cur, 'good'); if (s.name!==cur.name) drawStreet(s,'tap'); }
+}
+
+$('#next').onclick = () => nextQ();
+$('#skip').onclick = () => { if (!answered && cur) { rec(cur.name, false); updScore(); } nextQ(); };
+$('#namesBtn').onclick = () => setNames(!namesOn);
+$('#prevBox').onclick = () => { studyIdx--; clearOv(); showStudyBox(); };
+$('#nextBox').onclick = () => { studyIdx++; clearOv(); showStudyBox(); };
+$('#drawBtn').onclick = () => setDraw(!drawOn);
+document.querySelectorAll('#inkColors button').forEach(b => b.onclick = () => { inkColor = b.dataset.c; inkTool = 'pen'; document.querySelectorAll('#inkColors button').forEach(x=>x.classList.toggle('on', x===b)); document.querySelectorAll('#inkTool button').forEach(x=>x.classList.toggle('on', x.dataset.t==='pen')); });
+document.querySelectorAll('#inkTool button').forEach(b => b.onclick = () => { inkTool = b.dataset.t; document.querySelectorAll('#inkTool button').forEach(x=>x.classList.toggle('on', x===b)); });
+$('#inkUndo').onclick = () => { strokes.pop(); renderInk(); saveInk(); };
+$('#inkHide').onclick = () => { inkHidden = !inkHidden; renderInk(); updInkHide(); };
+let clearArm = false;
+$('#inkClear').onclick = e => { if (!clearArm) { clearArm = true; e.target.textContent = 'Tap again to clear'; setTimeout(()=>{ clearArm=false; e.target.textContent='Clear'; }, 3000); return; } clearArm = false; e.target.textContent = 'Clear'; strokes = []; renderInk(); saveInk(); };
+$('#showAround').onclick = () => { FX.querySelectorAll('.lbl').forEach(n=>n.remove()); visibleStreets().forEach(labelStreet); rescaleStrokes(); };
+
+document.querySelectorAll('#modes button').forEach(b => b.onclick = () => { mode = b.dataset.m; document.querySelectorAll('#modes button').forEach(x=>x.classList.toggle('on', x===b)); savePrefs(); start(); });
+document.querySelectorAll('#ansmode button').forEach(b => b.onclick = () => { ans = b.dataset.a; document.querySelectorAll('#ansmode button').forEach(x=>x.classList.toggle('on', x===b)); savePrefs(); if (mode==='name') nextQ(); });
+document.querySelectorAll('#modes button').forEach(x=>x.classList.toggle('on', x.dataset.m===mode));
+document.querySelectorAll('#ansmode button').forEach(x=>x.classList.toggle('on', x.dataset.a===ans));
+stSel.onchange = () => setStation(stSel.value);
+$('#boxBtn').onclick = openBoxes;
+$('#bxDone').onclick = closeBoxes;
+$('#bxAll').onclick = () => { Object.keys(ST.boxes).forEach(b=>sel.add(b)); openBoxes(); };
+$('#bxNone').onclick = () => { sel.clear(); openBoxes(); };
+$('#boxPanel').addEventListener('pointerdown', e => e.stopPropagation());
+$('#review').addEventListener('pointerdown', e => e.stopPropagation());
+
+// ---------- review ----------
+function openReview(){
+  const rows = ST.streets.map(s => ({s, r: stats[s.name]})).filter(o => o.r && o.r.w).sort((a,b)=> (b.r.w-b.r.r) - (a.r.w-a.r.r));
+  const tb = $('#revbody'); tb.innerHTML = rows.length ? '' : '<tr><td colspan="4" style="color:var(--mute)">No misses yet for this station.</td></tr>';
+  rows.forEach(o => { const tr = document.createElement('tr'); tr.className='click'; tr.innerHTML = `<td>${o.s.name}</td><td>${boxLabel(o.s)}</td><td class="n">${o.r.w}</td><td class="n">${o.r.r}</td>`; tr.onclick = () => { $('#review').classList.add('hidden'); mode='study'; document.querySelectorAll('#modes button').forEach(x=>x.classList.toggle('on', x.dataset.m==='study')); start(); questionView(o.s); drawStreet(o.s,'tap'); setPrompt(o.s.name, 'Box ' + boxLabel(o.s)); }; tb.appendChild(tr); });
+  $('#review').classList.remove('hidden');
+}
+$('#reviewBtn').onclick = openReview;
+$('#revClose').onclick = () => $('#review').classList.add('hidden');
+let resetArm = false;
+$('#revReset').onclick = e => { if (!resetArm) { resetArm = true; e.target.textContent = 'Tap again to confirm reset'; return; } stats = {}; save(); updScore(); resetArm = false; e.target.textContent = "Reset this station's progress"; openReview(); };
+
+setStation(P.stKey && DATA.stations[P.stKey] ? P.stKey : Object.keys(DATA.stations)[0]);
+})();
+</script>
+<script>if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));</script>
+</body>
+</html>

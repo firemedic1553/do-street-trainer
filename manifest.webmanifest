@@ -1,0 +1,16 @@
+{
+  "name": "D/O Street Trainer",
+  "short_name": "Street Trainer",
+  "description": "Driver Operator street map trainer for Hays County ESD 2 & 8 (Stations 31, 32, 33).",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f4f4f2",
+  "theme_color": "#ffffff",
+  "icons": [
+    {"src": "icon-192.png", "sizes": "192x192", "type": "image/png"},
+    {"src": "icon-512.png", "sizes": "512x512", "type": "image/png"},
+    {"src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ]
+}
